@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     const mailToYou = await transporter.sendMail({
       from: process.env.EMAIL_USER,
-      to: process.env.NEXT_PUBLIC_CONTACT_EMAIL,
+      to: process.env.CONTACT_EMAIL,
       subject: `New Contact Form: ${subject}`,
       html: `
         <h2>New Message from Your Portfolio</h2>
