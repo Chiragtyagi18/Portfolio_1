@@ -1,6 +1,7 @@
 'use client'
 
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { motion, type TargetAndTransition } from 'framer-motion'
 import { ArrowDownRight, ArrowLeft, ArrowRight, Check, Link2, Mail, Menu, X } from 'lucide-react'
 
 type Project = { name: string; category: 'Full Stack' | 'AI/ML' | 'Frontend'; year: string; featured?: boolean; github: string; demo: string; image: string; tech: string[]; features: string[]; tone: string }
@@ -33,36 +34,69 @@ export default function Page() {
   const [skillTab, setSkillTab] = useState<keyof typeof skillGroups>('FOUNDATIONS')
   const [filter, setFilter] = useState('All')
   const [projectIndex, setProjectIndex] = useState(0)
+  const [projectTick, setProjectTick] = useState(0)
   const [sent, setSent] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
-  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
+  const [reduced, setReduced] = useState(false)
+  const [started, setStarted] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setReduced(media.matches)
+    const onMedia = () => setReduced(media.matches)
+    media.addEventListener('change', onMedia)
+    const onLoaderExit = () => setStarted(true)
+    window.addEventListener('loader-exit', onLoaderExit)
+    const fallback = window.setTimeout(() => setStarted(true), 3800)
+    return () => {
+      media.removeEventListener('change', onMedia)
+      window.removeEventListener('loader-exit', onLoaderExit)
+      window.clearTimeout(fallback)
+    }
+  }, [])
+
+  type Ease = [number, number, number, number]
+  type AnimSpec = { hidden: TargetAndTransition; show: TargetAndTransition; delay: number; spring?: { stiffness: number; damping: number }; tween?: { duration: number; ease: Ease } }
+  function reveal({ hidden, show, delay, spring, tween }: AnimSpec) {
+    if (reduced) return { initial: { opacity: 0 }, animate: started ? { opacity: 1 } : { opacity: 0 }, transition: { duration: 0.5, ease: 'easeOut' as const } }
+    const transition = spring ? { type: 'spring' as const, ...spring, delay } : { type: 'tween' as const, ...(tween ?? { duration: 0.6, ease: [0.25, 1, 0.5, 1] as Ease }), delay }
+    return { initial: hidden, animate: started ? show : hidden, transition }
+  }
+
+  function sectionReveal() {
+    if (reduced) return { initial: { opacity: 0 }, whileInView: { opacity: 1 }, viewport: { once: true, amount: 0.12 }, transition: { duration: 0.5 } }
+    return { initial: { opacity: 0, y: 40 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, amount: 0.12 }, transition: { type: 'tween' as const, duration: 0.6, ease: [0.25, 1, 0.5, 1] as Ease } }
+  }
 
   const filtered = useMemo(() => filter === 'All' ? projects : projects.filter((project) => project.category === filter), [filter])
   const activeProject = filtered[projectIndex % filtered.length]
 
-  function changeFilter(next: string) { setFilter(next); setProjectIndex(0) }
-  function moveProject(direction: number) { setProjectIndex((current) => (current + direction + filtered.length) % filtered.length) }
+  useEffect(() => {
+    if (filtered.length < 2) return
+    const id = window.setInterval(() => setProjectIndex((current) => (current + 1) % filtered.length), 5000)
+    return () => window.clearInterval(id)
+  }, [filtered.length, projectTick])
+
+  function changeFilter(next: string) { setFilter(next); setProjectIndex(0); setProjectTick((tick) => tick + 1) }
+  function moveProject(direction: number) { setProjectIndex((current) => (current + direction + filtered.length) % filtered.length); setProjectTick((tick) => tick + 1) }
   async function submitContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!name || !email || !subject || !message) return
+    if (!email || !message) return
     setSending(true)
     setError('')
     try {
       const response = await fetch('/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, subject, message }),
+        body: JSON.stringify({ email, message }),
       })
       const data = await response.json()
       if (response.ok) {
         setSent(true)
-        setName('')
         setEmail('')
-        setSubject('')
         setMessage('')
       } else {
         setError(data.error || 'Something went wrong. Please try again.')
@@ -77,40 +111,60 @@ export default function Page() {
 
   return (
     <main className="portfolio-shell">
-      <nav className="navbar" aria-label="Main navigation">
+      <motion.nav className="navbar" aria-label="Main navigation" {...reveal({ hidden: { y: -100, opacity: 0 }, show: { y: 0, opacity: 1 }, delay: 0, spring: { stiffness: 300, damping: 15 } })}>
         <a className="logo-mark" href="#home" aria-label="Chirag Tyagi home"><span>CT</span></a>
         <div className={`nav-links ${mobileOpen ? 'open' : ''}`}>
           {navItems.map((item) => <a key={item} href={`#${item.toLowerCase()}`} onClick={() => setMobileOpen(false)}>{item}</a>)}
         </div>
         <a className="button button-orange nav-contact" href="#contact">Contact me <ArrowDownRight data-icon="inline-end" /></a>
         <button className="mobile-menu" onClick={() => setMobileOpen((value) => !value)} aria-label={mobileOpen ? 'Close menu' : 'Open menu'}>{mobileOpen ? <X /> : <Menu />}</button>
-      </nav>
+      </motion.nav>
 
       <section className="hero-section" id="home">
         <div className="hero-copy">
-          <div className="hud-label">FULL STACK <span>•</span> DEVELOPER</div>
-          <h1>Hi, I&apos;m <strong>Chirag</strong><br />Full Stack Dev<br /><span>&amp; AI Builder</span></h1>
-          <p className="hero-lede">I build performant, AI-integrated web apps — from React/Next.js frontends to FastAPI and Node backends. I design interfaces with clean UI and delightful micro-interactions.</p>
-          <div className="button-row"><a className="button button-orange" href="#projects">View Projects <ArrowDownRight data-icon="inline-end" /></a><a className="button button-light" href="#contact">Hire Me <ArrowDownRight data-icon="inline-end" /></a></div>
-          <div className="tag-row">{['React', 'Next.js', 'TypeScript', 'Node.js', 'FastAPI', 'Tailwind'].map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
+          <motion.div className="hud-label" {...reveal({ hidden: { scale: 0.5, opacity: 0 }, show: { scale: 1, opacity: 1 }, delay: 0.2, spring: { stiffness: 420, damping: 13 } })}>FULL STACK <span>•</span> DEVELOPER</motion.div>
+          <motion.h1>
+            {[
+              <>Hi, I&apos;m <strong>Chirag</strong></>,
+              <>Full Stack Dev</>,
+              <><span>&amp; AI Builder</span></>,
+            ].map((line, index) => (
+              <motion.span className="hero-line" key={index} {...reveal({ hidden: { y: 30, opacity: 0 }, show: { y: 0, opacity: 1 }, delay: 0.3 + index * 0.1, spring: { stiffness: 220, damping: 18 } })}>{line}</motion.span>
+            ))}
+          </motion.h1>
+          <motion.p className="hero-lede" {...reveal({ hidden: { y: 20, opacity: 0 }, show: { y: 0, opacity: 1 }, delay: 0.55, tween: { duration: 0.6, ease: [0.25, 1, 0.5, 1] } })}>I build performant, AI-integrated web apps — from React/Next.js frontends to FastAPI and Node backends. I design interfaces with clean UI and delightful micro-interactions.</motion.p>
+          <div className="button-row">
+            <motion.a className="button button-orange" href="#projects" {...reveal({ hidden: { scale: 0, opacity: 0 }, show: { scale: [0, 1.15, 1.05, 1], opacity: [0, 1, 1, 1] }, delay: 0.65, tween: { duration: 0.7, ease: [0.25, 1, 0.5, 1] } })}>View Projects <ArrowDownRight data-icon="inline-end" /></motion.a>
+            <motion.a className="button button-light" href="#contact" {...reveal({ hidden: { scale: 0, opacity: 0 }, show: { scale: [0, 1.15, 1.05, 1], opacity: [0, 1, 1, 1] }, delay: 0.75, tween: { duration: 0.7, ease: [0.25, 1, 0.5, 1] } })}>Hire Me <ArrowDownRight data-icon="inline-end" /></motion.a>
+          </div>
+          <div className="tag-row">
+            {['React', 'Next.js', 'TypeScript', 'Node.js', 'FastAPI', 'Tailwind'].map((tag, index) => (
+              <motion.span className="tag" key={tag} {...reveal({ hidden: { scale: 0.6, opacity: 0 }, show: { scale: [0.6, 1.12, 1], opacity: [0, 1, 1] }, delay: 0.9 + index * 0.05, tween: { duration: 0.5, ease: [0.25, 1, 0.5, 1] } })}>{tag}</motion.span>
+            ))}
+          </div>
         </div>
         <div className="avatar-zone">
-          <div className="avatar-card"><img className="avatar-img" src="/avatar.png" alt="Chirag Tyagi" /></div>
+          <motion.div className="avatar-reveal" {...reveal({ hidden: { x: 150, opacity: 0 }, show: { x: 0, opacity: 1 }, delay: 0.4, spring: { stiffness: 260, damping: 15 } })}>
+            <div className="avatar-card">
+              <img className="avatar-img" src="/avatar.png" alt="Chirag Tyagi" />
+              <motion.div className="rank-badge" {...reveal({ hidden: { scale: 0, opacity: 0 }, show: { scale: 1, opacity: 1 }, delay: 1.6, spring: { stiffness: 500, damping: 12 } })}>RANK S</motion.div>
+            </div>
+          </motion.div>
         </div>
       </section>
 
-      <section className="dark-section about-section" id="about">
+      <motion.section className="dark-section about-section" id="about" {...sectionReveal()}>
         <SectionHeading title="ABOUT" subtitle="Full Stack Developer • AI Enthusiast • Problem Solver" dark />
         <div className="about-grid"><div className="mission-card game-card"><div className="card-kicker">ABOUT ME // 001</div><div className="mission-icon">✦</div><h3>BUILD THINGS<br /><span>THAT MATTER.</span></h3><p>I craft fast, reliable full-stack applications with clean UI and thoughtful backend architecture — blending React/Next.js on the frontend with Node.js, Express, FastAPI, and MongoDB/PostgreSQL on the backend, and exploring AI/ML integrations along the way.</p><div className="button-row"><a className="button button-orange" href="#projects">View Projects</a><a className="button button-mint" href="#contact">Contact Me</a></div></div><div className="stats-card game-card"><div className="card-kicker">HIGHLIGHTS // 2026</div><div className="stat-list"><Stat number="11+" label="PROJECTS SHIPPED" /><Stat number="15+" label="TECHNOLOGIES USED" /><Stat number="2+" label="CERTIFICATIONS" /></div><div className="education"><span className="status-dot" /> B.TECH CSE, 2023–2027 <small>KIET GROUP OF INSTITUTIONS, GHAZIABAD</small></div><div className="tag-row"><span className="tag tag-yellow">REACT</span><span className="tag tag-yellow">NODE.JS</span><span className="tag tag-yellow">TAILWIND</span></div></div></div>
-      </section>
+      </motion.section>
 
-      <section className="light-section skills-section" id="skills"><SectionHeading title="SKILLS" subtitle="Core technologies I use to design, build, and ship products" /><div className="skills-grid"><div className="skills-main"><div className="tabs">{Object.keys(skillGroups).map((tab) => <button className={skillTab === tab ? 'active' : ''} key={tab} onClick={() => setSkillTab(tab as keyof typeof skillGroups)}>{tab}</button>)}</div><div className="loadout-card game-card"><div className="loadout-top"><span>SKILL EQUIPMENT</span><b>MASTERY</b></div><div className="skill-chips">{skillGroups[skillTab].map((skill) => <span className="skill-chip" key={skill}><Check data-icon="inline-start" /> {skill}</span>)}</div><div className="loadout-footer">CATEGORY: <strong>{skillTab}</strong></div></div></div><div className="progress-panel game-card"><div className="card-kicker">SKILL LEVEL</div>{Object.keys(skillGroups).map((group, index) => <div className="progress-item" key={group}><div><span>{group}</span><b>{[92, 88, 84, 78][index]}%</b></div><div className="progress-bar"><i style={{ width: `${[92, 88, 84, 78][index]}%` }} /></div></div>)}</div></div></section>
+      <motion.section className="light-section skills-section" id="skills" {...sectionReveal()}><SectionHeading title="SKILLS" subtitle="Core technologies I use to design, build, and ship products" /><div className="skills-grid"><div className="skills-main"><div className="tabs">{Object.keys(skillGroups).map((tab) => <button className={skillTab === tab ? 'active' : ''} key={tab} onClick={() => setSkillTab(tab as keyof typeof skillGroups)}>{tab}</button>)}</div><div className="loadout-card game-card"><div className="loadout-top"><span>SKILL EQUIPMENT</span><b>MASTERY</b></div><div className="skill-chips">{skillGroups[skillTab].map((skill) => <span className="skill-chip" key={skill}><Check data-icon="inline-start" /> {skill}</span>)}</div><div className="loadout-footer">CATEGORY: <strong>{skillTab}</strong></div></div></div><div className="progress-panel game-card"><div className="card-kicker">SKILL LEVEL</div>{Object.keys(skillGroups).map((group, index) => <div className="progress-item" key={group}><div><span>{group}</span><b>{[92, 88, 84, 78][index]}%</b></div><div className="progress-bar"><i style={{ width: `${[92, 88, 84, 78][index]}%` }} /></div></div>)}</div></div></motion.section>
 
-      <section className="projects-section" id="projects"><SectionHeading title="PROJECTS" subtitle="Showcasing my work across the stack — from frontends to full-stack and AI builds" dark /><div className="filter-row">{['All', 'Full Stack', 'AI/ML', 'Frontend'].map((item) => <button className={filter === item ? 'active' : ''} key={item} onClick={() => changeFilter(item)}>{item}</button>)}</div><div className="project-window game-card"><button className="window-arrow arrow-left" onClick={() => moveProject(-1)} aria-label="Previous project"><ArrowLeft /></button><button className="window-arrow arrow-right" onClick={() => moveProject(1)} aria-label="Next project"><ArrowRight /></button><div className="window-bar"><span className="traffic"><i /><i /><i /></span><strong>PROJECT WINDOW</strong><span className="window-hint">USE ARROW KEYS OR SIDE ARROWS</span></div><div className="project-content"><div className={`project-preview tone-${activeProject.tone}`}><div className="browser-bar"><span>●</span><span>●</span><span>●</span><small>project_preview.exe</small></div><div className="preview-shot"><img src={activeProject.image} alt={`${activeProject.name} preview`} /></div><div className="preview-label">BUILD<br />DEPLOY<br />REPEAT.</div></div><div className="project-details"><div className="project-meta">{activeProject.category} <span>•</span> {activeProject.year} {activeProject.featured && <b>FEATURED</b>}</div><h3>{activeProject.name}</h3><p>Ship-ready product architecture with a focused interface and a clear path from idea to useful experience.</p><div className="tag-row">{activeProject.tech.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div><ul>{activeProject.features.map((feature) => <li key={feature}>{feature}</li>)}</ul><div className="button-row"><a className="button button-orange" href={activeProject.demo} target="_blank" rel="noreferrer">View Project <ArrowDownRight data-icon="inline-end" /></a><a className="code-link" href={activeProject.github} target="_blank" rel="noreferrer"><Link2 data-icon="inline-start" /> View Code</a></div></div></div></div></section>
+      <motion.section className="projects-section" id="projects" {...sectionReveal()}><SectionHeading title="PROJECTS" subtitle="Showcasing my work across the stack — from frontends to full-stack and AI builds" dark /><div className="filter-row">{['All', 'Full Stack', 'AI/ML', 'Frontend'].map((item) => <button className={filter === item ? 'active' : ''} key={item} onClick={() => changeFilter(item)}>{item}</button>)}</div><div className="project-window game-card"><button className="window-arrow arrow-left" onClick={() => moveProject(-1)} aria-label="Previous project"><ArrowLeft /></button><button className="window-arrow arrow-right" onClick={() => moveProject(1)} aria-label="Next project"><ArrowRight /></button><div className="window-bar"><span className="traffic"><i /><i /><i /></span><strong>PROJECT WINDOW</strong><span className="window-hint">USE ARROW KEYS OR SIDE ARROWS</span></div><div className="project-content"><div className={`project-preview tone-${activeProject.tone}`}><div className="browser-bar"><span>●</span><span>●</span><span>●</span><small>project_preview.exe</small></div><div className="preview-shot"><img src={activeProject.image} alt={`${activeProject.name} preview`} /></div><div className="preview-label">BUILD<br />DEPLOY<br />REPEAT.</div></div><div className="project-details"><div className="project-meta">{activeProject.category} <span>•</span> {activeProject.year} {activeProject.featured && <b>FEATURED</b>}</div><h3>{activeProject.name}</h3><p>Ship-ready product architecture with a focused interface and a clear path from idea to useful experience.</p><div className="tag-row">{activeProject.tech.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div><ul>{activeProject.features.map((feature) => <li key={feature}>{feature}</li>)}</ul><div className="button-row"><a className="button button-orange" href={activeProject.demo} target="_blank" rel="noreferrer">View Project <ArrowDownRight data-icon="inline-end" /></a><a className="code-link" href={activeProject.github} target="_blank" rel="noreferrer"><Link2 data-icon="inline-start" /> View Code</a></div></div></div></div></motion.section>
 
-      <section className="light-section experience-section" id="education"><SectionHeading title="EDUCATION" subtitle="My academic background and learning milestones" /><div className="timeline">{[['2022', 'STARTED THE JOURNEY', 'Started web development journey with HTML, CSS, JavaScript'], ['2023', 'WENT FULL STACK', 'React, Node.js, databases — MongoDB and PostgreSQL'], ['2023–2027', 'B.TECH CSE', 'Pursuing B.Tech (CSE), KIET Group of Institutions, Ghaziabad — CGPA 7.9'], ['2025', 'AI/ML INTEGRATION', 'Began integrating AI/ML into projects: image generation, AQI reporting, blog generation'], ['2026', 'CURRENT WORK', 'Shipping full-stack + AI projects, still growing']].map(([year, title, copy], index) => <div className="timeline-item" key={year}><div className="timeline-node">{index + 1}</div><div className="timeline-card game-card"><span className="timeline-year">{year}</span><h3>{title}</h3><p>{copy}</p></div></div>)}</div><div className="cert-strip"><div className="card-kicker">CERTIFICATIONS</div><div className="cert-list">{[['AWS Certified Cloud Practitioner (CLF-C02)', 'https://drive.google.com/file/d/1OalCTyTJYA8l-JUMJZXDP-GNEQaAgKZp/view?usp=sharing'], ['AWS Certified AI Practitioner', 'https://drive.google.com/file/d/1t6NVFJc2gYknAmrZKU0QEtBnvRHzD5n-/view?usp=sharing'], ['MongoDB University — Introduction to MongoDB', 'https://drive.google.com/file/d/1MFby9R0s_pvFagdfDA-afUWSaLczRxAH/view?usp=drive_link']].map(([cert, url]) => <div className="cert-badge" key={cert}><span>★</span>{cert}<a href={url} target="_blank" rel="noreferrer">VERIFY</a></div>)}</div></div></section>
+      <motion.section className="light-section experience-section" id="education" {...sectionReveal()}><SectionHeading title="EDUCATION" subtitle="My academic background and learning milestones" /><div className="timeline">{[['2023–2027', 'B.TECH CSE', 'Pursuing B.Tech (CSE), KIET Group of Institutions, Ghaziabad — CGPA 7.9']].map(([year, title, copy], index) => <div className="timeline-item" key={year}><div className="timeline-node">{index + 1}</div><div className="timeline-card game-card"><span className="timeline-year">{year}</span><h3>{title}</h3><p>{copy}</p></div></div>)}</div><div className="cert-strip"><div className="card-kicker">CERTIFICATIONS</div><div className="cert-list">{[['AWS Certified Cloud Practitioner (CLF-C02)', 'https://drive.google.com/file/d/1OalCTyTJYA8l-JUMJZXDP-GNEQaAgKZp/view?usp=sharing'], ['AWS Certified AI Practitioner', 'https://drive.google.com/file/d/1t6NVFJc2gYknAmrZKU0QEtBnvRHzD5n-/view?usp=sharing'], ['MongoDB University — Introduction to MongoDB', 'https://drive.google.com/file/d/1MFby9R0s_pvFagdfDA-afUWSaLczRxAH/view?usp=drive_link']].map(([cert, url]) => <div className="cert-badge" key={cert}><span>★</span>{cert}<a href={url} target="_blank" rel="noreferrer">VERIFY</a></div>)}</div></div></motion.section>
 
-      <section className="dark-section cta-section" id="build">
+      <motion.section className="dark-section cta-section" id="build" {...sectionReveal()}>
         <SectionHeading title="LET&apos;S BUILD TOGETHER" subtitle="Got an idea? Let&apos;s turn it into a product worth shipping." dark />
         <div className="cta-card game-card">
           <img className="cta-img" src="/avatar1.png" alt="Let's build together" />
@@ -121,9 +175,9 @@ export default function Page() {
             <div className="button-row"><a className="button button-orange" href="#contact">Start a Project <ArrowDownRight data-icon="inline-end" /></a><a className="button button-light" href="https://github.com/Chiragtyagi18" target="_blank" rel="noreferrer">View GitHub</a></div>
           </div>
         </div>
-      </section>
+      </motion.section>
 
-      <section className="contact-section" id="contact"><SectionHeading title="CONTACT" subtitle="Let&apos;s build something great together — I&apos;d love to hear from you." /><div className="contact-grid"><form className="contact-form game-card" onSubmit={submitContact}>{sent ? <div className="sent-state"><span>✓</span><h3>MESSAGE SENT!</h3><p>Thanks for reaching out. Chirag will respond soon.</p><button type="button" className="button button-light" onClick={() => setSent(false)}>Send another</button></div> : <><div className="card-kicker">CONTACT FORM</div><label>YOUR NAME<input value={name} onChange={(event) => setName(event.target.value)} required placeholder="ENTER YOUR NAME" /></label><label>EMAIL<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="YOUR@EMAIL.COM" /></label><label>SUBJECT<input value={subject} onChange={(event) => setSubject(event.target.value)} required placeholder="WHAT IS THIS ABOUT?" /></label><label>MESSAGE<textarea value={message} onChange={(event) => setMessage(event.target.value)} required placeholder="WRITE YOUR MESSAGE..." rows={5} /></label>{error && <p className="form-error">{error}</p>}<button className="button button-orange" type="submit" disabled={sending}>{sending ? 'SENDING...' : <><span>SEND MESSAGE</span><ArrowDownRight data-icon="inline-end" /></>}</button></>}</form><div className="profile-card game-card"><div className="card-kicker">PROFILE CARD</div><div className="profile-avatar">CT</div><h3>CHIRAG TYAGI</h3><span className="role-tag">FULL STACK DEVELOPER • AI ENTHUSIAST</span><p>Open to collabs, internships, freelance work, and full-stack/AI projects. I usually respond quickly.</p><div className="button-row"><a className="button button-light" href="#">Resume</a><a className="button button-mint" href="#">Availability</a></div><div className="connect-panel"><div className="card-kicker">CONNECT</div><a href="https://github.com/chiragtyagi18" target="_blank" rel="noreferrer"><Link2 data-icon="inline-start" /> github.com/chiragtyagi18</a><a href="https://linkedin.com/in/chiragtyagi" target="_blank" rel="noreferrer"><Link2 data-icon="inline-start" /> linkedin.com/in/chiragtyagi</a><a href="mailto:tyagichirag009@gmail.com"><Mail data-icon="inline-start" /> tyagichirag009@gmail.com</a></div><div className="profile-hp"><span>HP</span><div className="bar"><i /></div></div></div></div></section>
+      <motion.section className="contact-section" id="contact" {...sectionReveal()}><SectionHeading title="CONTACT" subtitle="Let&apos;s build something great together — I&apos;d love to hear from you." /><div className="contact-grid"><form className="contact-form game-card" onSubmit={submitContact}>{sent ? <div className="sent-state"><span>✓</span><h3>MESSAGE SENT!</h3><p>Thanks for reaching out. Chirag will respond soon.</p><button type="button" className="button button-light" onClick={() => setSent(false)}>Send another</button></div> : <><div className="card-kicker">CONTACT FORM</div><label>EMAIL<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="YOUR@EMAIL.COM" /></label><label>MESSAGE<textarea value={message} onChange={(event) => setMessage(event.target.value)} required placeholder="WRITE YOUR MESSAGE..." rows={5} /></label>{error && <p className="form-error">{error}</p>}<button className="button button-orange" type="submit" disabled={sending}>{sending ? 'SENDING...' : <><span>SEND MESSAGE</span><ArrowDownRight data-icon="inline-end" /></>}</button></>}</form><div className="profile-card game-card"><div className="card-kicker">PROFILE CARD</div><div className="profile-avatar">CT</div><h3>CHIRAG TYAGI</h3><span className="role-tag">FULL STACK DEVELOPER • AI ENTHUSIAST</span><p>Open to collabs, internships, freelance work, and full-stack/AI projects. I usually respond quickly.</p><div className="button-row"><a className="button button-light" href="#">Resume</a><a className="button button-mint" href="#">Availability</a></div><div className="connect-panel"><div className="card-kicker">CONNECT</div><a href="https://github.com/chiragtyagi18" target="_blank" rel="noreferrer"><Link2 data-icon="inline-start" /> github.com/chiragtyagi18</a><a href="https://linkedin.com/in/chiragtyagi" target="_blank" rel="noreferrer"><Link2 data-icon="inline-start" /> linkedin.com/in/chiragtyagi</a><a href="mailto:tyagichirag009@gmail.com"><Mail data-icon="inline-start" /> tyagichirag009@gmail.com</a></div></div></div></motion.section>
 
       <footer className="footer-bar"><a className="logo-mark" href="#home"><span>CT</span></a><span>© 2026 CHIRAG TYAGI / BUILT WITH INTENTION</span><div><a href="https://github.com/Chiragtyagi18" target="_blank" rel="noreferrer">GITHUB</a><a href="https://linkedin.com/in/chiragtyagi" target="_blank" rel="noreferrer">LINKEDIN</a><a href="mailto:tyagichirag009@gmail.com">EMAIL</a></div></footer>
     </main>

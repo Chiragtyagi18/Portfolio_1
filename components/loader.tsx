@@ -47,6 +47,10 @@ export default function LoadingScreen() {
     return () => window.clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    if (done) window.dispatchEvent(new Event('loader-exit'))
+  }, [done])
+
   return (
     <AnimatePresence onExitComplete={() => { document.body.style.overflow = '' }}>
       {!done && (
